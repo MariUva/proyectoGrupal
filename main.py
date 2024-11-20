@@ -4,7 +4,12 @@ from tkinter import messagebox
 from Carro import Carro
 from Cliente import Cliente
 from Objeto import Objeto
-import GestorDePrestamos  # Se importa el módulo
+import GestorDePrestamos 
+import re
+from tkcalendar import Calendar
+import tkinter as tk
+from tkinter import messagebox
+from tkcalendar import DateEntry
 
 class QMDApp:
     def __init__(self, root):
@@ -13,11 +18,11 @@ class QMDApp:
         self.root.geometry("800x500")
         self.centrar_ventana(800, 550)
 
-        # Crear instancias
+        # Crear instancias de objetos
         self.objetos = [
             Objeto(1, "Laptop", "Laptop HP de 14 pulgadas"),
             Objeto(2, "Proyector", "Proyector Epson 3D"),
-            Objeto(3, "Tablet", "Tablet Samsung Galaxy Tab"),
+            Objeto(3, "Tablet", "Tablet Samsung Galaxy Tab", estado="reservado"),  # Tablet inicialmente reservada
         ]
         self.carro = Carro()
         self.gestor = GestorDePrestamos.GestorDePrestamos()  # Accede a la clase correctamente
@@ -41,7 +46,7 @@ class QMDApp:
         frame_productos = tk.Frame(self.root)
         frame_productos.pack(pady=10, fill="x", padx=20)
 
-        #Productos disponibles
+        # Productos disponibles
         tk.Label(frame_productos, text="Productos Disponibles", font=("Arial", 14, "bold"), fg="green").grid(row=0, column=0, padx=10, sticky="n", columnspan=1)
         self.lista_objetos = tk.Listbox(frame_productos, width=50, height=8)
         self.lista_objetos.grid(row=1, column=0, padx=10)
@@ -77,6 +82,7 @@ class QMDApp:
         self.lista_objetos.delete(0, tk.END)
         self.lista_reservados.delete(0, tk.END)
 
+        # Se actualizan las listas disponibles y reservados en función del estado de cada producto
         for objeto in self.objetos:
             if objeto.estado == "disponible":
                 self.lista_objetos.insert(tk.END, f"{objeto.nombre} - {objeto.descripcion}")
@@ -101,7 +107,8 @@ class QMDApp:
         self.carro.agregar_producto(producto)
         self.lista_carro.insert(tk.END, f"{producto.nombre} - {producto.descripcion}")
 
-        # También actualizar la lista de objetos disponibles
+        # Actualizar el estado del producto a "reservado" y moverlo a la lista de productos reservados
+        producto.estado = "reservado"
         self.actualizar_lista_objetos()
 
     def eliminar_producto_carro(self):
@@ -122,11 +129,11 @@ class QMDApp:
         self.actualizar_lista_objetos()
 
     def mostrar_formulario_solicitud(self):
-        """Muestra un formulario para ingresar los datos del cliente."""
+        """Muestra un formulario para ingresar los datos del cliente y fechas de préstamo."""
         # Crear una nueva ventana para la solicitud
         formulario_ventana = tk.Toplevel(self.root)
         formulario_ventana.title("Formulario de Solicitud")
-        formulario_ventana.geometry("400x300")
+        formulario_ventana.geometry("400x400")  # Aumentamos el tamaño para más campos
 
         # Labels y campos de entrada
         tk.Label(formulario_ventana, text="Nombre:").pack(pady=5)
@@ -141,38 +148,56 @@ class QMDApp:
         telefono_entry = tk.Entry(formulario_ventana, width=40)
         telefono_entry.pack(pady=5)
 
-        # Función para enviar la solicitud
-        def enviar_solicitud():
-            nombre = nombre_entry.get()
-            email = email_entry.get()
-            telefono = telefono_entry.get()
+        # Campos de fecha
+        tk.Label(formulario_ventana, text="Fecha de Solicitud:").pack(pady=5)
+        fecha_solicitud_entry = tk.Entry(formulario_ventana, width=40)
+        fecha_solicitud_entry.pack(pady=5)
 
-            # Validación de los datos
-            if not nombre or not email or not telefono:
-                messagebox.showerror("Error", "Debe completar todos los datos del cliente.")
-                return
+        # Crear un calendario para la fecha de solicitud
+        tk.Label(formulario_ventana, text="Fecha de Solicitud de Préstamo:").pack(pady=5)
+        date_entry_fecha_emision = DateEntry(formulario_ventana, date_pattern='yyyy-mm-dd', width=20)
+        date_entry_fecha_emision.pack(pady=5)
 
-            # Crear cliente y solicitud
-            cliente = Cliente(len(self.gestor.solicitudes) + 1, nombre, email, telefono)
-            solicitud = self.gestor.crear_solicitud(cliente, self.carro.objetos)
-            messagebox.showinfo("Solicitud realizada", f"Solicitud realizada con éxito.\nID: {solicitud['id']}")
-
-            # Mover los productos del carro a "reservado"
-            for producto in self.carro.objetos:
-                producto.estado = "reservado"
-
-            # Actualizar las listas
-            self.actualizar_lista_objetos()
-
-            # Limpiar el carro después de la solicitud
-            self.carro.objetos.clear()
-            self.lista_carro.delete(0, tk.END)
-
-            formulario_ventana.destroy()  # Cerrar el formulario
+        tk.Label(formulario_ventana, text="Fecha de Devolución:").pack(pady=5)
+        date_entry_fecha_expiracion = DateEntry(formulario_ventana, date_pattern='yyyy-mm-dd', width=20)
+        date_entry_fecha_expiracion.pack(pady=5)
 
         # Botón para enviar la solicitud
-        tk.Button(formulario_ventana, text="Enviar Solicitud", command=enviar_solicitud).pack(pady=10)
+        tk.Button(formulario_ventana, text="Enviar Solicitud", command=lambda: self.realizar_solicitud(
+            nombre_entry.get(), email_entry.get(), telefono_entry.get(),
+            date_entry_fecha_emision.get(), date_entry_fecha_expiracion.get(), formulario_ventana
+        )).pack(pady=10)
 
+    def realizar_solicitud(self, nombre, email, telefono, fecha_solicitud, fecha_devolucion, formulario_ventana):
+        """Realiza la solicitud de préstamo con los datos ingresados."""
+        # Validar que los campos no estén vacíos
+        if not nombre or not email or not telefono:
+            messagebox.showwarning("Advertencia", "Todos los campos son obligatorios.")
+            return
+
+        # Aquí asumimos que todos los objetos del carro están reservados
+        for producto in self.carro.objetos:
+            producto.fecha_prestamo = fecha_solicitud
+            producto.fecha_devolucion = fecha_devolucion
+
+        # Cerrar la ventana del formulario
+        formulario_ventana.destroy()
+
+        # Mostrar mensaje de éxito
+        messagebox.showinfo("Éxito", "Solicitud realizada con éxito.")
+
+        # Mover los productos del carro a "reservado"
+        for producto in self.carro.objetos:
+            producto.estado = "reservado"
+
+        # Actualizar las listas de productos
+        self.actualizar_lista_objetos()
+
+        # Limpiar el carro después de la solicitud
+        self.carro.objetos.clear()
+        self.lista_carro.delete(0, tk.END)
+
+        formulario_ventana.destroy()  # Cerrar el formulario
 
 if __name__ == "__main__":
     root = tk.Tk()
