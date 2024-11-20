@@ -1,3 +1,6 @@
+from ConexionBD import ConexionDB
+
+
 class Solicitud:
     def __init__(self, id_solicitud, id_cliente, fecha_prestamo, fecha_devolucion, aprobada):
         self.id_solicitud = id_solicitud
