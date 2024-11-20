@@ -1,16 +1,20 @@
 import tkinter as tk
 from tkinter import messagebox
-
+from tkcalendar import DateEntry
 from Carro import Carro
 from Cliente import Cliente
 from Objeto import Objeto
-import GestorDePrestamos 
-import re
-from tkcalendar import Calendar
-import tkinter as tk
-from tkinter import messagebox
-from tkcalendar import DateEntry
+import GestorDePrestamos
+import mysql.connector
 
+# Conexion con la base de datos MySQL
+def conectar_bd():
+    return mysql.connector.connect(
+        host="localhost",
+        user="root",  
+        password="root",  
+        database="qmd"
+    )
 
 class QMDApp:
     def __init__(self, root):
@@ -20,13 +24,12 @@ class QMDApp:
         self.centrar_ventana(800, 550)
 
         # Crear instancias de objetos
-        self.objetos = [
-            Objeto(1, "Laptop", "Laptop HP de 14 pulgadas"),
-            Objeto(2, "Proyector", "Proyector Epson 3D"),
-            Objeto(3, "Tablet", "Tablet Samsung Galaxy Tab", estado="reservado"),  # Tablet inicialmente reservada
-        ]
+        self.objetos = []
         self.carro = Carro()
-        self.gestor = GestorDePrestamos.GestorDePrestamos()  # Accede a la clase correctamente
+        self.gestor = GestorDePrestamos.GestorDePrestamos()
+
+        # Cargar los objetos disponibles de la base de datos
+        self.cargar_objetos_bd()
 
         # Crear interfaz
         self.crear_interfaz()
@@ -57,7 +60,7 @@ class QMDApp:
         self.lista_reservados = tk.Listbox(frame_productos, width=50, height=8)
         self.lista_reservados.grid(row=1, column=1, padx=10)
 
-        # Se asegura de que ambas secciones estén centradas, usando el método grid
+        # Se asegura de que ambas secciones estén centradas
         frame_productos.grid_columnconfigure(0, weight=1)
         frame_productos.grid_columnconfigure(1, weight=1)
 
@@ -75,8 +78,20 @@ class QMDApp:
         # Botón para realizar la solicitud (azul)
         tk.Button(self.root, text="Realizar Solicitud", font=("Arial", 12), command=self.mostrar_formulario_solicitud, bg="blue", fg="white").pack(pady=10)
 
-        # Ahora que todo está inicializado, podemos actualizar las listas
+        # Actualizar las listas de objetos
         self.actualizar_lista_objetos()
+
+    def cargar_objetos_bd(self):
+        """Carga los objetos disponibles desde la base de datos MySQL"""
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id_objeto, nombre, descripcion, estado FROM Objetos")
+        objetos_bd = cursor.fetchall()
+        conn.close()
+
+        for objeto in objetos_bd:
+            objeto_id, nombre, descripcion, estado = objeto
+            self.objetos.append(Objeto(objeto_id, nombre, descripcion, estado))
 
     def actualizar_lista_objetos(self):
         """Actualiza la lista de objetos disponibles y reservados."""
@@ -127,21 +142,22 @@ class QMDApp:
 
     def mostrar_formulario_solicitud(self):
         """Muestra un formulario para ingresar los datos del cliente y fechas de préstamo."""
-        # Crear una nueva ventana para la solicitud
         formulario_ventana = tk.Toplevel(self.root)
         formulario_ventana.title("Formulario de Solicitud")
-        formulario_ventana.geometry("400x400")  # Aumentamos el tamaño para más campos
+        formulario_ventana.geometry("400x400")
 
-        # Labels y campos de entrada
-        tk.Label(formulario_ventana, text="Id:").pack(pady=5)
-        id_cliente_entry = tk.Entry(formulario_ventana, width=40)
-        id_cliente_entry.pack(pady=5)
-        
-        # Labels y campos de entrada
         tk.Label(formulario_ventana, text="Nombre:").pack(pady=5)
         nombre_entry = tk.Entry(formulario_ventana, width=40)
         nombre_entry.pack(pady=5)
-        
+
+        tk.Label(formulario_ventana, text="Email:").pack(pady=5)
+        email_entry = tk.Entry(formulario_ventana, width=40)
+        email_entry.pack(pady=5)
+
+        tk.Label(formulario_ventana, text="Telefono:").pack(pady=5)
+        telefono_entry = tk.Entry(formulario_ventana, width=40)
+        telefono_entry.pack(pady=5)
+
         # Crear un calendario para la fecha de solicitud
         tk.Label(formulario_ventana, text="Fecha de Solicitud de Préstamo:").pack(pady=5)
         date_entry_fecha_emision = DateEntry(formulario_ventana, date_pattern='yyyy-mm-dd', width=20)
@@ -151,23 +167,32 @@ class QMDApp:
         date_entry_fecha_expiracion = DateEntry(formulario_ventana, date_pattern='yyyy-mm-dd', width=20)
         date_entry_fecha_expiracion.pack(pady=5)
 
-        # Botón para enviar la solicitud
         tk.Button(formulario_ventana, text="Enviar Solicitud", command=lambda: self.realizar_solicitud(
-            id_cliente_entry.get(),nombre_entry.get(), date_entry_fecha_emision.get(), date_entry_fecha_expiracion.get(), formulario_ventana
+            nombre_entry.get(), email_entry.get(), telefono_entry.get(), date_entry_fecha_emision.get(), date_entry_fecha_expiracion.get(), formulario_ventana
         )).pack(pady=10)
 
     def realizar_solicitud(self, nombre, email, telefono, fecha_solicitud, fecha_devolucion, formulario_ventana):
         """Realiza la solicitud de préstamo con los datos ingresados."""
-        # Validar que los campos no estén vacíos
         if not nombre or not email or not telefono:
             messagebox.showwarning("Advertencia", "Todos los campos son obligatorios.")
             return
 
-        # Aquí asumimos que todos los objetos del carro están reservados
+        # Crear una nueva solicitud y asociar los objetos seleccionados
+        conn = conectar_bd()
+        cursor = conn.cursor()
+
+        # Insertar datos en la tabla Solicitudes
+        cursor.execute("INSERT INTO Solicitudes (nombre_cliente, email_cliente, telefono_cliente, fecha_solicitud, fecha_devolucion) VALUES (%s, %s, %s, %s, %s)",
+                       (nombre, email, telefono, fecha_solicitud, fecha_devolucion))
+        solicitud_id = cursor.lastrowid
+
+        # Insertar los productos reservados
         for producto in self.carro.objetos:
-            producto.fecha_prestamo = fecha_solicitud
-            producto.fecha_devolucion = fecha_devolucion
-            producto.estado = "reservado"  # Ahora cambiamos su estado a reservado
+            cursor.execute("UPDATE Objetos SET estado='reservado' WHERE id_objeto=%s", (producto.id,))
+            cursor.execute("INSERT INTO DetalleSolicitud (id_solicitud, id_objeto) VALUES (%s, %s)", (solicitud_id, producto.id))
+
+        conn.commit()
+        conn.close()
 
         # Cerrar la ventana del formulario
         formulario_ventana.destroy()
@@ -175,15 +200,10 @@ class QMDApp:
         # Mostrar mensaje de éxito
         messagebox.showinfo("Éxito", "Solicitud realizada con éxito.")
 
-        # Actualizar las listas de productos
-        self.actualizar_lista_objetos()
-
-        # Limpiar el carro después de la solicitud
+        # Limpiar el carro y actualizar las listas de objetos
         self.carro.objetos.clear()
         self.lista_carro.delete(0, tk.END)
-
-        formulario_ventana.destroy()  # Cerrar el formulario
-
+        self.actualizar_lista_objetos()
 
 if __name__ == "__main__":
     root = tk.Tk()
