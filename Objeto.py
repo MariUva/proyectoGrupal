@@ -1,6 +1,9 @@
+from ConexionBD import ConexionDB
+
+
 class Objeto:
     def __init__(self, id_objeto, nombre, descripcion, estado):
-        self.id_objeto = id_objeto
+        self.id_objeto = id_objeto  # Asegúrate de que este atributo exista
         self.nombre = nombre
         self.descripcion = descripcion
         self.estado = estado
@@ -20,7 +23,7 @@ class Objeto:
 
     @staticmethod
     def obtener_reservados():
-        """Obtiene todos los objetos reservados"""
+        """Obtiene todos los objetos prestados"""
         conexion = ConexionDB()
         conexion.conectar()
         cursor = conexion.connection.cursor()

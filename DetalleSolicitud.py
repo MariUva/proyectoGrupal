@@ -1,3 +1,6 @@
+from ConexionBD import ConexionDB
+
+
 class DetalleSolicitud:
     def __init__(self, id_detalle, id_solicitud, id_objeto):
         self.id_detalle = id_detalle

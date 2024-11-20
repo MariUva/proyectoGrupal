@@ -94,15 +94,15 @@ class QMDApp:
             self.objetos.append(Objeto(objeto_id, nombre, descripcion, estado))
 
     def actualizar_lista_objetos(self):
-        """Actualiza la lista de objetos disponibles y reservados."""
+        """Actualiza la lista de objetos disponibles y prestados."""
         self.lista_objetos.delete(0, tk.END)
         self.lista_reservados.delete(0, tk.END)
 
-        # Se actualizan las listas disponibles y reservados en función del estado de cada producto
+        # Se actualizan las listas disponibles y prestados en función del estado de cada producto
         for objeto in self.objetos:
             if objeto.estado == "disponible":
                 self.lista_objetos.insert(tk.END, f"{objeto.nombre} - {objeto.descripcion}")
-            elif objeto.estado == "reservado":
+            elif objeto.estado == "prestado":
                 self.lista_reservados.insert(tk.END, f"{objeto.nombre} - {objeto.descripcion}")
 
     def agregar_producto_carro(self):
@@ -115,13 +115,15 @@ class QMDApp:
         # Agregar el producto al carro
         index = seleccion[0]
         producto = self.objetos[index]
-        if producto.estado == "reservado":
-            messagebox.showwarning("Advertencia", "Este producto ya está reservado.")
+        if producto.estado == "prestado":
+            messagebox.showwarning("Advertencia", "Este producto ya está prestado.")
             return
 
         # Agregar el producto al carro (sin cambiar su estado)
         self.carro.agregar_producto(producto)
         self.lista_carro.insert(tk.END, f"{producto.nombre} - {producto.descripcion}")
+
+
 
     def eliminar_producto_carro(self):
         """Elimina un producto del carro."""
@@ -141,55 +143,86 @@ class QMDApp:
         self.actualizar_lista_objetos()
 
     def mostrar_formulario_solicitud(self):
-        """Muestra un formulario para ingresar los datos del cliente y fechas de préstamo."""
+        """Muestra el formulario para ingresar el ID del cliente y validar si está registrado."""
         formulario_ventana = tk.Toplevel(self.root)
-        formulario_ventana.title("Formulario de Solicitud")
-        formulario_ventana.geometry("400x400")
+        formulario_ventana.title("Validar ID Cliente")
+        formulario_ventana.geometry("400x300")
 
-        tk.Label(formulario_ventana, text="Nombre:").pack(pady=5)
-        nombre_entry = tk.Entry(formulario_ventana, width=40)
-        nombre_entry.pack(pady=5)
+        tk.Label(formulario_ventana, text="ID Cliente:").pack(pady=10)
+        id_cliente_entry = tk.Entry(formulario_ventana, width=40)
+        id_cliente_entry.pack(pady=10)
 
-        tk.Label(formulario_ventana, text="Email:").pack(pady=5)
-        email_entry = tk.Entry(formulario_ventana, width=40)
-        email_entry.pack(pady=5)
+        # Botón para validar el ID
+        tk.Button(formulario_ventana, text="Validar ID", command=lambda: self.validar_id_cliente(id_cliente_entry.get(), formulario_ventana)).pack(pady=10)
 
-        tk.Label(formulario_ventana, text="Telefono:").pack(pady=5)
-        telefono_entry = tk.Entry(formulario_ventana, width=40)
-        telefono_entry.pack(pady=5)
+    def validar_id_cliente(self, id_cliente, formulario_ventana):
+        """Valida el ID del cliente y muestra los datos si el ID es correcto."""
+        if not id_cliente:
+            messagebox.showwarning("Advertencia", "Por favor ingrese el ID del cliente.")
+            return
 
-        # Crear un calendario para la fecha de solicitud
-        tk.Label(formulario_ventana, text="Fecha de Solicitud de Préstamo:").pack(pady=5)
-        date_entry_fecha_emision = DateEntry(formulario_ventana, date_pattern='yyyy-mm-dd', width=20)
-        date_entry_fecha_emision.pack(pady=5)
+        # Conectar a la base de datos y verificar si el ID del cliente existe
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id_cliente, nombre, email, telefono FROM Clientes WHERE id_cliente = %s", (id_cliente,))
+        cliente = cursor.fetchone()
+        conn.close()
 
-        tk.Label(formulario_ventana, text="Fecha de Devolución:").pack(pady=5)
-        date_entry_fecha_expiracion = DateEntry(formulario_ventana, date_pattern='yyyy-mm-dd', width=20)
-        date_entry_fecha_expiracion.pack(pady=5)
+        if cliente:
+            # El cliente está registrado, proceder con la segunda fase
+            self.mostrar_datos_cliente(cliente, formulario_ventana)
+        else:
+            # El ID no está registrado
+            messagebox.showwarning("Error", "Lo sentimos, no está registrado en el sistema.")
+            formulario_ventana.destroy()
 
-        tk.Button(formulario_ventana, text="Enviar Solicitud", command=lambda: self.realizar_solicitud(
-            nombre_entry.get(), email_entry.get(), telefono_entry.get(), date_entry_fecha_emision.get(), date_entry_fecha_expiracion.get(), formulario_ventana
-        )).pack(pady=10)
+    def mostrar_datos_cliente(self, cliente, formulario_ventana):
+        """Muestra los datos del cliente y permite elegir las fechas de préstamo."""
+        formulario_ventana.destroy()
 
-    def realizar_solicitud(self, nombre, email, telefono, fecha_solicitud, fecha_devolucion, formulario_ventana):
+        # Crear ventana para mostrar los datos del cliente y las fechas
+        datos_ventana = tk.Toplevel(self.root)
+        datos_ventana.title("Datos del Cliente y Fechas de Préstamo")
+        datos_ventana.geometry("400x400")
+
+        # Mostrar los datos del cliente
+        tk.Label(datos_ventana, text="Nombre: " + cliente[1]).pack(pady=5)
+        tk.Label(datos_ventana, text="Email: " + cliente[2]).pack(pady=5)
+        tk.Label(datos_ventana, text="Teléfono: " + cliente[3]).pack(pady=5)
+
+        # Selección de fechas
+        tk.Label(datos_ventana, text="Fecha de Solicitud:").pack(pady=10)
+        fecha_solicitud = DateEntry(datos_ventana, width=12, background="darkblue", foreground="white", borderwidth=2)
+        fecha_solicitud.pack(pady=5)
+
+        tk.Label(datos_ventana, text="Fecha de Devolución:").pack(pady=10)
+        fecha_devolucion = DateEntry(datos_ventana, width=12, background="darkblue", foreground="white", borderwidth=2)
+        fecha_devolucion.pack(pady=5)
+
+        # Botón para realizar la solicitud
+        tk.Button(datos_ventana, text="Realizar Solicitud", font=("Arial", 12), command=lambda: self.realizar_solicitud(cliente[0], fecha_solicitud.get_date(), fecha_devolucion.get_date(), datos_ventana)).pack(pady=10)
+
+    def realizar_solicitud(self, id_cliente, fecha_solicitud, fecha_devolucion, formulario_ventana):
         """Realiza la solicitud de préstamo con los datos ingresados."""
-        if not nombre or not email or not telefono:
-            messagebox.showwarning("Advertencia", "Todos los campos son obligatorios.")
+        if not id_cliente:
+            messagebox.showwarning("Advertencia", "Debe ingresar un ID de cliente válido.")
             return
 
         # Crear una nueva solicitud y asociar los objetos seleccionados
         conn = conectar_bd()
         cursor = conn.cursor()
 
-        # Insertar datos en la tabla Solicitudes
-        cursor.execute("INSERT INTO Solicitudes (nombre_cliente, email_cliente, telefono_cliente, fecha_solicitud, fecha_devolucion) VALUES (%s, %s, %s, %s, %s)",
-                       (nombre, email, telefono, fecha_solicitud, fecha_devolucion))
+        # Insertar datos en la tabla Solicitudes (solo con id_cliente y fechas)
+        cursor.execute("""
+            INSERT INTO Solicitudes (id_cliente, fecha_prestamo, fecha_devolucion)
+            VALUES (%s, %s, %s)
+        """, (id_cliente, fecha_solicitud, fecha_devolucion))
         solicitud_id = cursor.lastrowid
 
-        # Insertar los productos reservados
+        # Insertar los productos prestados
         for producto in self.carro.objetos:
-            cursor.execute("UPDATE Objetos SET estado='reservado' WHERE id_objeto=%s", (producto.id,))
-            cursor.execute("INSERT INTO DetalleSolicitud (id_solicitud, id_objeto) VALUES (%s, %s)", (solicitud_id, producto.id))
+            cursor.execute("UPDATE Objetos SET estado='prestado' WHERE id_objeto=%s", (producto.id_objeto,))  # Cambiar id por id_objeto
+            cursor.execute("INSERT INTO DetalleSolicitud (id_solicitud, id_objeto) VALUES (%s, %s)", (solicitud_id, producto.id_objeto))  # Cambiar id por id_objeto
 
         conn.commit()
         conn.close()
@@ -205,7 +238,8 @@ class QMDApp:
         self.lista_carro.delete(0, tk.END)
         self.actualizar_lista_objetos()
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = QMDApp(root)
-    root.mainloop()
+
+# Crear la ventana principal de la aplicación
+root = tk.Tk()
+app = QMDApp(root)
+root.mainloop()
