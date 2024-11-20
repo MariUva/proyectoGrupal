@@ -5,5 +5,6 @@ class Cliente:
         self.email = email
         self.telefono = telefono
 
+
     def __str__(self):
-        return f"Cliente({self.nombre}, {self.email})"
+        return f"Cliente({self.id_cliente},{self.nombre})"
