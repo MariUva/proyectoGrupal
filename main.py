@@ -18,6 +18,8 @@ def conectar_bd():
 
 class QMDApp:
     def __init__(self, root):
+
+    
         self.root = root
         self.root.title("Sistema QMD - Gestión de Préstamos")
         self.root.geometry("800x500")
@@ -31,8 +33,10 @@ class QMDApp:
         # Cargar los objetos disponibles de la base de datos
         self.cargar_objetos_bd()
 
+        
         # Crear interfaz
         self.crear_interfaz()
+        self.crear_menu()
 
     def centrar_ventana(self, ancho, alto):
         """Centra la ventana en la pantalla."""
@@ -41,6 +45,126 @@ class QMDApp:
         x_cordinate = int((screen_width / 2) - (ancho / 2))
         y_cordinate = int((screen_height / 2) - (alto / 2))
         self.root.geometry(f"{ancho}x{alto}+{x_cordinate}+{y_cordinate}")
+
+
+    def crear_menu(self):
+        """Crea un menú superior con opciones adicionales."""
+        menu_bar = tk.Menu(self.root)
+
+        # Menú Usuario
+        menu_usuario = tk.Menu(menu_bar, tearoff=0)
+        menu_usuario.add_command(label="Consultar Usuario", command=self.mostrar_usuario_y_prestamos)
+        menu_bar.add_cascade(label="Usuario", menu=menu_usuario)
+
+        # Configurar el menú en la ventana principal
+        self.root.config(menu=menu_bar)
+
+
+    def mostrar_usuario_y_prestamos(self):
+        """Muestra una ventana con los datos del usuario y los préstamos asociados."""
+        ventana_usuario = tk.Toplevel(self.root)
+        ventana_usuario.title("Información del Usuario y Préstamos")
+        ventana_usuario.geometry("400x400")
+
+        tk.Label(ventana_usuario, text="ID Cliente:").pack(pady=10)
+        id_cliente_entry = tk.Entry(ventana_usuario, width=30)
+        id_cliente_entry.pack(pady=5)
+
+        prestamos_listbox = tk.Listbox(ventana_usuario, width=50, height=10)
+        prestamos_listbox.pack(pady=10)
+
+        def consultar_prestamos():
+            """Consulta los préstamos del usuario según el ID ingresado."""
+            id_cliente = id_cliente_entry.get()
+            if not id_cliente:
+                messagebox.showwarning("Advertencia", "Debe ingresar un ID de cliente.")
+                return
+
+            # Conectar a la base de datos para obtener datos del cliente y préstamos
+            conn = conectar_bd()
+            cursor = conn.cursor()
+
+            # Obtener datos del cliente
+            cursor.execute("SELECT nombre FROM Clientes WHERE id_cliente = %s", (id_cliente,))
+            cliente = cursor.fetchone()
+
+            # Obtener préstamos del cliente
+            cursor.execute("""
+                SELECT S.id_solicitud, S.fecha_prestamo, S.fecha_devolucion, O.nombre, O.id_objeto
+                FROM Solicitudes S
+                JOIN DetalleSolicitud D ON S.id_solicitud = D.id_solicitud
+                JOIN Objetos O ON D.id_objeto = O.id_objeto
+                WHERE S.id_cliente = %s
+            """, (id_cliente,))
+            prestamos = cursor.fetchall()
+            conn.close()
+
+            if not cliente:
+                messagebox.showwarning("Error", "No se encontró el cliente con el ID proporcionado.")
+                return
+
+            # Mostrar el nombre del cliente
+            tk.Label(ventana_usuario, text=f"Nombre: {cliente[0]}", font=("Arial", 12, "bold")).pack(pady=5)
+
+            # Limpiar el Listbox y cargar los préstamos
+            prestamos_listbox.delete(0, tk.END)
+            if prestamos:
+                for prestamo in prestamos:
+                    prestamos_listbox.insert(tk.END, f"Solicitud {prestamo[0]}: {prestamo[3]} (De: {prestamo[1]} a {prestamo[2]})")
+                prestamos_listbox.prestamos = prestamos  # Guardar los datos completos de los préstamos en una propiedad del Listbox
+            else:
+                prestamos_listbox.insert(tk.END, "No hay préstamos registrados.")
+                prestamos_listbox.prestamos = []
+
+        def eliminar_prestamo():
+            """Elimina el préstamo seleccionado y actualiza el estado del objeto."""
+            seleccion = prestamos_listbox.curselection()
+            if not seleccion:
+                messagebox.showwarning("Advertencia", "Debe seleccionar un préstamo para eliminar.")
+                return
+
+            # Obtener los datos del préstamo seleccionado
+            index = seleccion[0]
+            prestamo = prestamos_listbox.prestamos[index]
+            id_solicitud = prestamo[0]
+            id_objeto = prestamo[4]  # ID del objeto asociado
+
+            # Confirmar eliminación
+            if not messagebox.askyesno("Confirmar", "¿Está seguro de que desea eliminar este préstamo?"):
+                return
+
+            # Eliminar el préstamo de la base de datos y actualizar el estado del objeto
+            conn = conectar_bd()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM DetalleSolicitud WHERE id_solicitud = %s AND id_objeto = %s", (id_solicitud, id_objeto))
+            cursor.execute("UPDATE Objetos SET estado = 'disponible' WHERE id_objeto = %s", (id_objeto,))
+            conn.commit()
+            conn.close()
+
+            # Eliminar la entrada del Listbox y mostrar mensaje de éxito
+            prestamos_listbox.delete(index)
+            prestamos_listbox.prestamos.pop(index)
+            messagebox.showinfo("Éxito", "El préstamo fue eliminado y el objeto está disponible nuevamente.")
+
+        # Botón para consultar préstamos
+        tk.Button(ventana_usuario, text="Consultar", command=consultar_prestamos, bg="blue", fg="white").pack(pady=5)
+
+        # Botón para eliminar el préstamo seleccionado
+        tk.Button(ventana_usuario, text="Eliminar Préstamo", command=eliminar_prestamo, bg="red", fg="white").pack(pady=5)
+
+        def limpiar_busqueda():
+            """Limpia el campo de entrada y los resultados mostrados."""
+            id_cliente_entry.delete(0, tk.END)  # Limpiar el campo de entrada
+            # Limpiar los resultados (asegúrate de que frame_resultados esté correctamente definido)
+            for widget in frame_resultados.winfo_children():
+                widget.destroy()  # Eliminar resultados anteriores
+
+        # Asumiendo que frame_resultados está definido en alguna parte del código, por ejemplo:
+        frame_resultados = tk.Frame(ventana_usuario)
+        frame_resultados.pack(pady=10)
+
+        # Botón para limpiar resultados
+        tk.Button(ventana_usuario, text="Limpiar", command=limpiar_busqueda, bg="gray", fg="white").pack(pady=10)
 
     def crear_interfaz(self):
         # Título
@@ -56,7 +180,7 @@ class QMDApp:
         self.lista_objetos.grid(row=1, column=0, padx=10)
 
         # Productos reservados
-        tk.Label(frame_productos, text="Productos Reservados", font=("Arial", 14, "bold")).grid(row=0, column=1, padx=10, sticky="n", columnspan=1)
+        tk.Label(frame_productos, text="Productos Prestados", font=("Arial", 14, "bold")).grid(row=0, column=1, padx=10, sticky="n", columnspan=1)
         self.lista_reservados = tk.Listbox(frame_productos, width=50, height=8)
         self.lista_reservados.grid(row=1, column=1, padx=10)
 
@@ -70,6 +194,9 @@ class QMDApp:
         # Botón para eliminar producto del carro (rojo)
         tk.Button(self.root, text="Eliminar Producto del Carro", font=("Arial", 12), command=self.eliminar_producto_carro, bg="red", fg="white").pack(pady=10)
 
+        # Botón para actualizar la tabla (amarillo)
+        tk.Button(self.root, text="Actualizar Tabla", font=("Arial", 12), command=self.actualizar_lista_objetos, bg="yellow", fg="black").pack(pady=10)
+
         # Carro de objetos
         tk.Label(self.root, text="Carro de Objetos:", font=("Arial", 14, "bold")).pack()
         self.lista_carro = tk.Listbox(self.root, width=60, height=5)
@@ -80,6 +207,7 @@ class QMDApp:
 
         # Actualizar las listas de objetos
         self.actualizar_lista_objetos()
+
 
     def cargar_objetos_bd(self):
         """Carga los objetos disponibles desde la base de datos MySQL"""
@@ -98,13 +226,21 @@ class QMDApp:
         self.lista_objetos.delete(0, tk.END)
         self.lista_reservados.delete(0, tk.END)
 
-        # Se actualizan las listas disponibles y prestados en función del estado de cada producto
-        for objeto in self.objetos:
-            if objeto.estado == "disponible":
-                self.lista_objetos.insert(tk.END, f"{objeto.nombre} - {objeto.descripcion}")
-            elif objeto.estado == "prestado":
-                self.lista_reservados.insert(tk.END, f"{objeto.nombre} - {objeto.descripcion}")
-
+        # Recargar los objetos desde la base de datos para obtener el estado actualizado
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id_objeto, nombre, descripcion, estado FROM Objetos")
+        objetos_bd = cursor.fetchall()
+        conn.close()
+        
+        # Actualizar la lista de objetos disponibles y reservados
+        for objeto in objetos_bd:
+            objeto_id, nombre, descripcion, estado = objeto
+            if estado == "disponible":
+                self.lista_objetos.insert(tk.END, f"{nombre} - {descripcion}")
+            elif estado == "prestado":
+                self.lista_reservados.insert(tk.END, f"{nombre} - {descripcion}")
+    
     def agregar_producto_carro(self):
         """Agrega un producto al carro."""
         seleccion = self.lista_objetos.curselection()
